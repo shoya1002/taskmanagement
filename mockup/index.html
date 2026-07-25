@@ -96,6 +96,23 @@
       text-align: center;
     }
 
+    /* ===== Column toolbar (sort) ===== */
+    .column-toolbar {
+      padding: 0 12px 8px;
+    }
+
+    .sort-select {
+      width: 100%;
+      padding: 4px 6px;
+      border: 1px solid #dfe1e6;
+      border-radius: 4px;
+      font-size: 12px;
+      color: #5e6c84;
+      background: white;
+      cursor: pointer;
+    }
+    .sort-select:focus { outline: none; border-color: #0052cc; color: #172b4d; }
+
     .card-list {
       padding: 0 8px;
       min-height: 8px;
@@ -177,6 +194,25 @@
       color: #c0392b;
     }
     .btn-delete:hover { background: #f5b7b1; }
+
+    /* ===== Priority badge ===== */
+    .card-labels {
+      display: flex;
+      gap: 4px;
+    }
+
+    .card-priority {
+      font-size: 11px;
+      font-weight: 600;
+      border-radius: 3px;
+      padding: 1px 6px;
+      display: inline-block;
+      width: fit-content;
+    }
+
+    .priority-high   { background: #fce8e8; color: #c0392b; }
+    .priority-medium { background: #fef3e2; color: #d35400; }
+    .priority-low    { background: #e3f9e5; color: #006644; }
 
     /* ===== Due date display ===== */
     .card-due {
@@ -473,6 +509,14 @@
           />
         </div>
         <div class="form-group">
+          <label class="form-label" for="priority-input">優先度</label>
+          <select class="form-input" id="priority-input">
+            <option value="high">高</option>
+            <option value="medium" selected>中</option>
+            <option value="low">低</option>
+          </select>
+        </div>
+        <div class="form-group">
           <label class="form-label" for="due-date-input">期限日（任意）</label>
           <input
             class="form-input"
@@ -515,13 +559,20 @@
     ];
 
     let cards = [
-      { id: 'card-1', columnId: 'todo',        text: 'タスクA', dueDate: null },
-      { id: 'card-2', columnId: 'todo',        text: 'タスクB', dueDate: '2026-07-20' },
-      { id: 'card-3', columnId: 'in-progress', text: 'タスクC', dueDate: '2026-07-30' },
-      { id: 'card-4', columnId: 'done',        text: 'タスクD', dueDate: null },
+      { id: 'card-1', columnId: 'todo',        text: 'タスクA', dueDate: null,         priority: 'high'   },
+      { id: 'card-2', columnId: 'todo',        text: 'タスクB', dueDate: '2026-07-20', priority: 'medium' },
+      { id: 'card-3', columnId: 'in-progress', text: 'タスクC', dueDate: '2026-07-30', priority: 'low'    },
+      { id: 'card-4', columnId: 'done',        text: 'タスクD', dueDate: null,         priority: 'medium' },
     ];
 
     let nextCardId = 5;
+
+    // sort state per column: 'none' | 'priority' | 'due'
+    const columnSort = {};
+    COLUMNS.forEach(col => { columnSort[col.id] = 'none'; });
+
+    const PRIORITY_LABELS = { high: '高', medium: '中', low: '低' };
+    const PRIORITY_ORDER  = { high: 0, medium: 1, low: 2 };
 
     // modal state
     let pendingColumnId  = null;
@@ -605,6 +656,27 @@
       return `${y}/${m}/${d}`;
     }
 
+    // ===== Sort helpers =====
+    function sortCards(list, sortKey) {
+      const sorted = list.slice();
+      if (sortKey === 'priority') {
+        sorted.sort((a, b) => PRIORITY_ORDER[a.priority] - PRIORITY_ORDER[b.priority]);
+      } else if (sortKey === 'due') {
+        sorted.sort((a, b) => {
+          if (!a.dueDate && !b.dueDate) return 0;
+          if (!a.dueDate) return 1;
+          if (!b.dueDate) return -1;
+          return a.dueDate < b.dueDate ? -1 : a.dueDate > b.dueDate ? 1 : 0;
+        });
+      }
+      return sorted;
+    }
+
+    function onSortChange(colId, value) {
+      columnSort[colId] = value;
+      renderBoard();
+    }
+
     // ===== Render =====
     function renderBoard() {
       const board = document.getElementById('board');
@@ -614,7 +686,7 @@
         const colCards   = cards.filter(c => c.columnId === col.id);
 
         const colEl = document.createElement('div');
-        colEl.className = 'column' + (dragOverColumnId === col.id && draggingCardId ? ' drag-over' : '');
+        colEl.className = 'column';
         colEl.dataset.columnId = col.id;
 
         // Column drop events (empty area)
@@ -639,40 +711,37 @@
         header.appendChild(badge);
         colEl.appendChild(header);
 
+        // Toolbar (sort)
+        const toolbar = document.createElement('div');
+        toolbar.className = 'column-toolbar';
+
+        const sortSelect = document.createElement('select');
+        sortSelect.className = 'sort-select';
+        sortSelect.setAttribute('aria-label', `${col.title}の並び替え`);
+        [
+          { value: 'none',     label: '並び替えなし' },
+          { value: 'priority', label: '優先度順' },
+          { value: 'due',      label: '期限順' },
+        ].forEach(opt => {
+          const optEl = document.createElement('option');
+          optEl.value = opt.value;
+          optEl.textContent = opt.label;
+          if (columnSort[col.id] === opt.value) optEl.selected = true;
+          sortSelect.appendChild(optEl);
+        });
+        sortSelect.onchange = e => onSortChange(col.id, e.target.value);
+        toolbar.appendChild(sortSelect);
+        colEl.appendChild(toolbar);
+
         // Card list
         const list = document.createElement('div');
         list.className = 'card-list';
         list.dataset.columnId = col.id;
 
-        colCards.forEach((card, idx) => {
-          // Drop indicator above this card
-          if (
-            draggingCardId && draggingCardId !== card.id &&
-            dragOverCardId === card.id && !dragBelow
-          ) {
-            list.appendChild(makeDropIndicator());
-          }
-
-          const cardEl = makeCardElement(card, colIndex);
-          list.appendChild(cardEl);
-
-          // Drop indicator below this card
-          if (
-            draggingCardId && draggingCardId !== card.id &&
-            dragOverCardId === card.id && dragBelow
-          ) {
-            list.appendChild(makeDropIndicator());
-          }
+        const sortedCards = sortCards(colCards, columnSort[col.id]);
+        sortedCards.forEach(card => {
+          list.appendChild(makeCardElement(card, colIndex));
         });
-
-        // Drop indicator at bottom of empty column or after last card
-        if (
-          draggingCardId &&
-          dragOverColumnId === col.id &&
-          dragOverCardId === null
-        ) {
-          list.appendChild(makeDropIndicator());
-        }
 
         colEl.appendChild(list);
 
@@ -688,12 +757,6 @@
       });
     }
 
-    function makeDropIndicator() {
-      const el = document.createElement('div');
-      el.className = 'drop-indicator';
-      return el;
-    }
-
     function makeCardElement(card, colIndex) {
       const isFirstCol = colIndex === 0;
       const isLastCol  = colIndex === COLUMNS.length - 1;
@@ -705,9 +768,19 @@
       // Drag events
       cardEl.addEventListener('dragstart', e => onDragStart(e, card.id));
       cardEl.addEventListener('dragover',  e => onCardDragOver(e, card.id));
-      cardEl.addEventListener('dragleave', e => onCardDragLeave(e, card.id));
       cardEl.addEventListener('drop',      e => onCardDrop(e, card));
       cardEl.addEventListener('dragend',   () => onDragEnd());
+
+      // Priority label row
+      const labelsRow = document.createElement('div');
+      labelsRow.className = 'card-labels';
+
+      const priorityEl = document.createElement('span');
+      priorityEl.className = 'card-priority priority-' + (card.priority || 'medium');
+      priorityEl.textContent = PRIORITY_LABELS[card.priority] || PRIORITY_LABELS.medium;
+      priorityEl.setAttribute('aria-label', `優先度: ${PRIORITY_LABELS[card.priority] || PRIORITY_LABELS.medium}`);
+      labelsRow.appendChild(priorityEl);
+      cardEl.appendChild(labelsRow);
 
       // Main row: text + buttons
       const mainRow = document.createElement('div');
@@ -809,19 +882,66 @@
     }
 
     // ===== Drag & Drop =====
-    function onDragStart(e, cardId) {
-      draggingCardId = cardId;
-      e.dataTransfer.effectAllowed = 'move';
-      e.dataTransfer.setData('text/plain', cardId);
-      // Delay class application so the ghost image captures normal style
-      requestAnimationFrame(renderBoard);
+    //
+    // Important: while a native HTML5 drag is in progress, the dragged
+    // element (and whatever is under the pointer) must NOT be removed from
+    // the DOM. Rebuilding the board via renderBoard() on every dragover
+    // (the previous implementation) detaches those nodes; several browsers
+    // (notably Safari/WebKit, and sandboxed iframes such as embedded
+    // previews) respond by silently cancelling the drag session, so the
+    // drop event never fires even though dragstart/dragover looked fine.
+    // To keep the drag session stable, we only mutate a single shared
+    // "drop-indicator" element and toggle CSS classes during the drag, and
+    // defer any renderBoard() call until the drag has actually ended.
+
+    let dropIndicatorEl    = null;
+    let highlightedColumnEl = null;
+
+    function ensureDropIndicator() {
+      if (!dropIndicatorEl) {
+        dropIndicatorEl = document.createElement('div');
+        dropIndicatorEl.className = 'drop-indicator';
+      }
+      return dropIndicatorEl;
     }
 
-    function onDragEnd() {
+    function removeDropIndicator() {
+      if (dropIndicatorEl && dropIndicatorEl.parentNode) {
+        dropIndicatorEl.parentNode.removeChild(dropIndicatorEl);
+      }
+    }
+
+    function setColumnHighlight(colEl) {
+      if (highlightedColumnEl && highlightedColumnEl !== colEl) {
+        highlightedColumnEl.classList.remove('drag-over');
+      }
+      if (colEl) colEl.classList.add('drag-over');
+      highlightedColumnEl = colEl;
+    }
+
+    function cleanupDrag() {
       draggingCardId   = null;
       dragOverColumnId = null;
       dragOverCardId   = null;
       dragBelow        = false;
+      removeDropIndicator();
+      setColumnHighlight(null);
+    }
+
+    function onDragStart(e, cardId) {
+      draggingCardId = cardId;
+      e.dataTransfer.effectAllowed = 'move';
+      e.dataTransfer.setData('text/plain', cardId);
+      // Apply the class after the browser captures the drag ghost image,
+      // without touching the DOM tree (element stays in place).
+      const cardEl = e.currentTarget;
+      setTimeout(() => cardEl.classList.add('dragging'), 0);
+    }
+
+    function onDragEnd() {
+      const cardEl = document.querySelector(`[data-card-id="${draggingCardId}"]`);
+      if (cardEl) cardEl.classList.remove('dragging');
+      cleanupDrag();
       renderBoard();
     }
 
@@ -829,40 +949,29 @@
       e.preventDefault();
       e.stopPropagation();
       e.dataTransfer.dropEffect = 'move';
+      if (!draggingCardId || draggingCardId === targetCardId) return;
 
-      const rect    = e.currentTarget.getBoundingClientRect();
-      const midY    = rect.top + rect.height / 2;
-      const newBelow = e.clientY > midY;
-      const colId   = e.currentTarget.closest('[data-column-id]').dataset.columnId;
+      const targetEl = e.currentTarget;
+      const rect     = targetEl.getBoundingClientRect();
+      const below    = e.clientY > rect.top + rect.height / 2;
+      const colEl    = targetEl.closest('[data-column-id]');
 
-      if (
-        dragOverCardId   !== targetCardId ||
-        dragBelow        !== newBelow     ||
-        dragOverColumnId !== colId
-      ) {
-        dragOverCardId   = targetCardId;
-        dragBelow        = newBelow;
-        dragOverColumnId = colId;
-        renderBoard();
-      }
-    }
+      dragOverCardId   = targetCardId;
+      dragBelow        = below;
+      dragOverColumnId = colEl.dataset.columnId;
 
-    function onCardDragLeave(e, targetCardId) {
-      // Only clear if leaving to outside the card (not into a child)
-      if (!e.currentTarget.contains(e.relatedTarget)) {
-        if (dragOverCardId === targetCardId) {
-          dragOverCardId = null;
-        }
-      }
+      setColumnHighlight(colEl);
+      const indicator = ensureDropIndicator();
+      targetEl.parentNode.insertBefore(indicator, below ? targetEl.nextSibling : targetEl);
     }
 
     function onCardDrop(e, targetCard) {
       e.preventDefault();
       e.stopPropagation();
-      if (!draggingCardId || draggingCardId === targetCard.id) return;
+      if (!draggingCardId || draggingCardId === targetCard.id) { cleanupDrag(); return; }
 
       const dragging = cards.find(c => c.id === draggingCardId);
-      if (!dragging) return;
+      if (!dragging) { cleanupDrag(); return; }
 
       // Remove dragging card from current position
       cards = cards.filter(c => c.id !== draggingCardId);
@@ -872,26 +981,24 @@
       const insertIdx = dragBelow ? targetIdx + 1 : targetIdx;
       cards.splice(insertIdx, 0, { ...dragging, columnId: targetCard.columnId });
 
-      draggingCardId   = null;
-      dragOverColumnId = null;
-      dragOverCardId   = null;
-      dragBelow        = false;
+      cleanupDrag();
       renderBoard();
     }
 
     function onColumnDragOver(e, colId) {
-      // Only handle drops into the column padding/empty area (not over a card)
+      // Only reached for the empty column area: card-level dragover calls
+      // stopPropagation(), so this never fires while hovering over a card.
       e.preventDefault();
       e.dataTransfer.dropEffect = 'move';
+      if (!draggingCardId) return;
 
-      const colCards = cards.filter(c => c.columnId === colId);
-      if (colCards.length === 0 || !dragOverCardId) {
-        if (dragOverColumnId !== colId || dragOverCardId !== null) {
-          dragOverColumnId = colId;
-          dragOverCardId   = null;
-          renderBoard();
-        }
-      }
+      dragOverColumnId = colId;
+      dragOverCardId   = null;
+
+      const colEl = e.currentTarget;
+      setColumnHighlight(colEl);
+      const list = colEl.querySelector('.card-list');
+      list.appendChild(ensureDropIndicator());
     }
 
     function onColumnDragLeave(e, colId) {
@@ -900,7 +1007,8 @@
         if (dragOverColumnId === colId) {
           dragOverColumnId = null;
           dragOverCardId   = null;
-          renderBoard();
+          removeDropIndicator();
+          setColumnHighlight(null);
         }
       }
     }
@@ -910,19 +1018,15 @@
       if (!draggingCardId) return;
 
       const dragging = cards.find(c => c.id === draggingCardId);
-      if (!dragging) return;
+      if (!dragging) { cleanupDrag(); return; }
 
-      // If dropped on column background (no card target), append to end of column
-      if (dragOverCardId === null) {
-        cards = cards.filter(c => c.id !== draggingCardId);
-        cards.push({ ...dragging, columnId: colId });
+      // Reaching here means the drop landed on the column background (not
+      // on a card, since card drops stop propagation) — append to the end.
+      cards = cards.filter(c => c.id !== draggingCardId);
+      cards.push({ ...dragging, columnId: colId });
 
-        draggingCardId   = null;
-        dragOverColumnId = null;
-        dragOverCardId   = null;
-        dragBelow        = false;
-        renderBoard();
-      }
+      cleanupDrag();
+      renderBoard();
     }
 
     // ===== Create / Edit modal =====
@@ -933,6 +1037,7 @@
       document.getElementById('modal-submit-btn').textContent  = '追加する';
       document.getElementById('modal-submit-btn').setAttribute('aria-label', 'カードを追加する');
       document.getElementById('card-input').value      = '';
+      document.getElementById('priority-input').value  = 'medium';
       document.getElementById('due-date-input').value  = '';
       document.getElementById('card-overlay').classList.add('active');
       document.getElementById('card-input').focus();
@@ -946,6 +1051,7 @@
       document.getElementById('modal-submit-btn').textContent  = '保存する';
       document.getElementById('modal-submit-btn').setAttribute('aria-label', 'カードを保存する');
       document.getElementById('card-input').value      = card.text;
+      document.getElementById('priority-input').value  = card.priority || 'medium';
       document.getElementById('due-date-input').value  = card.dueDate || '';
       document.getElementById('card-overlay').classList.add('active');
       document.getElementById('card-input').focus();
@@ -958,9 +1064,10 @@
     }
 
     function submitModal() {
-      const input   = document.getElementById('card-input');
-      const text    = input.value.trim();
-      const dueDate = document.getElementById('due-date-input').value || null;
+      const input    = document.getElementById('card-input');
+      const text     = input.value.trim();
+      const priority = document.getElementById('priority-input').value;
+      const dueDate  = document.getElementById('due-date-input').value || null;
 
       if (!text) {
         input.focus();
@@ -970,14 +1077,16 @@
       if (editingCardId) {
         // Edit mode
         const card = cards.find(c => c.id === editingCardId);
-        card.text    = text;
-        card.dueDate = dueDate;
+        card.text     = text;
+        card.priority = priority;
+        card.dueDate  = dueDate;
       } else {
         // Add mode
         cards.push({
           id:       `card-${nextCardId++}`,
           columnId: pendingColumnId,
           text,
+          priority,
           dueDate,
         });
       }
