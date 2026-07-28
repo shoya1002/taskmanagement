@@ -1,0 +1,77 @@
+{
+  "permissions": {
+    "disableBypassPermissionsMode": "disable",
+    "allow": [
+      "Bash(git status*)",
+      "Bash(git diff*)",
+      "Bash(git log*)",
+      "Bash(git show*)",
+      "Bash(git branch)",
+      "Bash(git branch --list*)",
+      "Bash(git add *)",
+      "Bash(git commit*)",
+      "Bash(git fetch*)",
+      "Bash(git pull*)",
+      "Bash(git stash list*)",
+      "Bash(git stash show*)",
+      "Bash(git checkout -b *)",
+      "Bash(git switch *)",
+      "Bash(npm install*)",
+      "Bash(npm ci*)",
+      "Bash(npm run*)",
+      "Bash(npm test*)",
+      "Bash(npx *)",
+      "Bash(node *)",
+      "Bash(ls*)",
+      "Bash(pwd)",
+      "Bash(cat *)",
+      "Bash(grep *)",
+      "Bash(find *)",
+      "Bash(mkdir *)",
+      "Bash(touch *)",
+      "Bash(wc *)",
+      "Bash(diff *)",
+      "Read",
+      "Grep",
+      "Glob",
+      "Edit",
+      "Write"
+    ],
+    "deny": [
+      "Bash(rm *)",
+      "Bash(rm)",
+      "Bash(sudo rm *)",
+      "Bash(rmdir *)",
+      "Bash(mv *)",
+      "Bash(sudo mv *)",
+      "Bash(shred *)",
+      "Bash(dd *)",
+      "Bash(truncate *)",
+      "Bash(git reset --hard*)",
+      "Bash(git reset --hard)",
+      "Bash(git push --force*)",
+      "Bash(git push -f*)",
+      "Bash(git clean *)",
+      "Bash(git checkout -- *)",
+      "Bash(git checkout .)",
+      "Bash(git restore *)",
+      "Bash(git branch -D*)",
+      "Bash(git filter-branch*)",
+      "Bash(find * -delete*)"
+    ]
+  },
+  "hooks": {
+    "PreToolUse": [
+      {
+        "matcher": "Bash",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "bash \"$CLAUDE_PROJECT_DIR/.claude/hooks/deny-destructive-bash.sh\"",
+            "timeout": 10
+          }
+        ]
+      }
+    ]
+  }
+}
